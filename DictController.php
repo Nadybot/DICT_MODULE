@@ -10,37 +10,25 @@ use AL\PhpWndb\{
 	Model\Synsets\SynsetInterface,
 };
 use Nadybot\Core\{
-	CommandReply,
-	Nadybot,
+	Attributes as NCA,
+	CmdContext,
+	ModuleInstance,
 	Text,
 };
 
 /**
  * @author Nadyita (RK5) <nadyita@hodorraid.org>
- *
- * @Instance
- *
- * Commands this controller contains:
- *	@DefineCommand(
- *		command     = 'dict',
- *		accessLevel = 'all',
- *		description = 'Look up the definition of a word',
- *		help        = 'dict.txt'
- *	)
  */
-class DictController {
-
-	/**
-	 * Name of the module.
-	 * Set automatically by module loader.
-	 * @var string $moduleName
-	 */
-	public string $moduleName;
-
-	/** @Inject */
-	public Nadybot $chatBot;
-
-	/** @Inject */
+#[
+	NCA\Instance,
+	NCA\DefineCommand(
+		command:     'dict',
+		accessLevel: 'guest',
+		description: 'Look up the definition of a word',
+	)
+]
+class DictController extends ModuleInstance {
+	#[NCA\Inject]
 	public Text $text;
 
 	protected function getSynsetText(SynsetInterface $synset, string $search): string {
@@ -70,19 +58,10 @@ class DictController {
 	}
 
 	/**
-	 * Command to look up dictionary entries
-	 *
-	 * @param string                     $message The full command received
-	 * @param string                     $channel Where did the command come from (tell, guild, priv)
-	 * @param string                     $sender  The name of the user issuing the command
-	 * @param \Nadybot\Core\CommandReply $sendto  Object to use to reply to
-	 * @param string[]                   $args    The arguments to the dict-command
-	 * @return void
-	 *
-	 * @HandlesCommand("dict")
-	 * @Matches("/^dict\s+(.+)$/i")
+	 * Look up a word in the dictionary
 	 */
-	public function dictCommand(string $message, string $channel, string $sender, CommandReply $sendto, array $args): void {
+	#[NCA\HandlesCommand("dict")]
+	public function dictCommand(CmdContext $context, string $term): void {
 		$containerFactory = new DiContainerFactory();
 		$container = $containerFactory->createContainer();
 
@@ -90,11 +69,11 @@ class DictController {
 		$wordNet = $container->get(WordNet::class);
 
 		/** @var \AL\PhpWndb\Model\Synsets\SynsetInterface[] */
-		$synsets = $wordNet->searchLemma($args[1]);
+		$synsets = $wordNet->searchLemma($term);
 
 		if (empty($synsets)) {
-			$msg = "No definition found for <highlight>$args[1]<end>.";
-			$sendto->reply($msg);
+			$msg = "No definition found for <highlight>{$term}<end>.";
+			$context->reply($msg);
 			return;
 		}
 
@@ -106,15 +85,15 @@ class DictController {
 			} else {
 				$blob .= "\n";
 			}
-			$blob .= "\n" . $this->getSynsetText($synset, $args[1]);
+			$blob .= "\n" . $this->getSynsetText($synset, $term);
 		}
-		$blob .= "\n\n\nDictionary data provided by Princeton University";
+		$blob .= "\n\n\n<i>Dictionary data provided by Princeton University</i>";
 		$msg = $this->text->makeBlob(
 			"Found " . count($synsets) . " definition".
 			(count($synsets) > 1 ? 's' : '').
-			" for {$args[1]}",
+			" for {$term}",
 			$blob
 		);
-		$sendto->reply($msg);
+		$context->reply($msg);
 	}
 }

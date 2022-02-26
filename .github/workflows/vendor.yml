@@ -10,10 +10,10 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-      - name: Setup PHP 7.4 with composer
+      - name: Setup PHP 8.0 with composer
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '7.4'
+          php-version: '8.0'
           tools: composer:v2
       - name: Install dependencies
         shell: bash
