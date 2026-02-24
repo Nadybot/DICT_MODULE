@@ -4,18 +4,18 @@ namespace Nadybot\User\Modules\DICT_MODULE;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-use AL\PhpWndb\{
-	DiContainerFactory,
-	Model\Synsets\SynsetInterface,
-	Model\Words\WordInterface,
-	WordNet,
-};
 use Nadybot\Core\{
 	Attributes as NCA,
 	CmdContext,
 	ModuleInstance,
 	Text,
 	Types\AccessLevel,
+};
+use PhpWndb\Dataset\{
+	Model\Data\SynsetType,
+	Search\Crawl\SynsetCrawler,
+	Search\Crawl\WordCrawler,
+	WordNetProvider,
 };
 
 /**
@@ -36,25 +36,25 @@ class DictController extends ModuleInstance {
 	/** Look up a word in the dictionary */
 	#[NCA\HandlesCommand('dict')]
 	public function dictCommand(CmdContext $context, string $term): void {
-		$containerFactory = new DiContainerFactory();
-		$container = $containerFactory->createContainer();
+		$wordNet = (new WordNetProvider())->getWordNet();
 
-		/** @var WordNet */
-		$wordNet = $container->get(WordNet::class);
+		/** @var \ArrayIterator<SynsetCrawler> */
+		$synsets = $wordNet->search($term);
 
-		$synsets = $wordNet->searchLemma($term);
-
-		if (count($synsets) === 0) {
+		if ($synsets->count() === 0) {
 			$msg = "No definition found for <highlight>{$term}<end>.";
 			$context->reply($msg);
 			return;
 		}
 
 		$blob = '';
+
+		/** @var ?string */
 		$lastType = null;
 		foreach ($synsets as $synset) {
-			if ($lastType !== $synset->getPartOfSpeech()) {
-				$blob .= "\n\n<pagebreak><header2>" . ($lastType = $synset->getPartOfSpeech()) . '<end>';
+			if ($lastType !== $this->getSynsetType($synset->getType())) {
+				$blob .= "\n\n<pagebreak><header2>" .
+					($lastType = $this->getSynsetType($synset->getType())) . '<end>';
 			} else {
 				$blob .= "\n";
 			}
@@ -70,23 +70,25 @@ class DictController extends ModuleInstance {
 		$context->reply($msg);
 	}
 
-	protected function getSynsetText(SynsetInterface $synset, string $search): string {
+	protected function getSynsetText(SynsetCrawler $synset, string $search): string {
 		$indent = "\n<black>______<end>";
 		$blob = '<black>____<end><highlight>*<end><black>_<end>'.
 			wordwrap(ucfirst($synset->getGloss()), 80, "{$indent}");
+		$seeAlso = [];
+		foreach ($synset as $word) {
+			/** @var WordCrawler $word */
+			$seeAlso[] = $word->toString();
+		}
 		$synonyms = array_map(
 			function (string $word): string {
 				return $this->text->makeChatcmd($word, "/tell <myname> dict {$word}");
 			},
 			array_filter(
-				array_map(
-					static function (WordInterface $word): string {
-						return $word->getLemma();
-					},
-					$synset->getWords()
-				),
+				$seeAlso,
 				static function (string $word) use ($search): bool {
-					return strtolower($word) !== strtolower($search);
+					return strtolower($word) !== strtolower($search)
+						&& strtolower($word) !== strtolower($search.'(p)')
+						&& strtolower($word) !== strtolower($search.'(a)');
 				}
 			)
 		);
@@ -94,5 +96,12 @@ class DictController extends ModuleInstance {
 			$blob .= "{$indent}See also: " . implode(', ', $synonyms);
 		}
 		return $blob;
+	}
+
+	private function getSynsetType(SynsetType $type): string {
+		return match ($type) {
+			SynsetType::ADJECTIVE_SATELLITE => 'ADJECTIVE',
+			default => $type->name,
+		};
 	}
 }

@@ -1,5 +1,5 @@
 {
     "require": {
-        "adam-lutka/php-wndb": "^0.2.0"
+        "phpwndb/phpwndb": "^0.1.0"
     }
 }
